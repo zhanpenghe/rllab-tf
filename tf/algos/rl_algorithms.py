@@ -1,0 +1,2 @@
+class RLAlgorithm(object):
+    pass
