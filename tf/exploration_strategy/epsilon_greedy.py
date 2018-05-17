@@ -1,3 +1,4 @@
+import numpy as np
 
 
 class EpsilonGreedy(object):
@@ -8,8 +9,13 @@ class EpsilonGreedy(object):
         self.policy = None
 
     def get_action(self, observations):
-        action, _ = self.policy.get_action(observations)
-        return action
+        if np.random.uniform() <= self._prob:
+            action = self._action_space.sample()
+            info = 'random'
+        else:
+            action, _ = self.policy.get_action(observations)
+            info = 'policy'
+        return action, info
 
     def initialize(self, policy):
         self.policy = policy
