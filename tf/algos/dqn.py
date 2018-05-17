@@ -1,4 +1,7 @@
+import pyprind
+import numpy as np
 import tensorflow as tf
+from rllab.misc import logger
 from sandbox.zhanpeng.tf.algos.rl_algorithms import RLAlgorithm
 from sandbox.zhanpeng.tf.policies.argmax import ArgmaxDiscretePolicy
 from sandbox.zhanpeng.tf.exploration_strategy.epsilon_greedy import EpsilonGreedy
@@ -40,7 +43,7 @@ class DQN(RLAlgorithm):
         self._max_path_length = max_path_length
         self._gamma = gamma
 
-        self._policy = ArgmaxDiscretePolicy(qf=self._qf)
+        self._policy = ArgmaxDiscretePolicy(env_spec=self._env.spec, qf=self._qf)
 
         self._es = es if es else EpsilonGreedy(self._env.action_space, prob_random_action=self._epsilon)
         self._es.initialize(policy=self._policy)
@@ -63,53 +66,52 @@ class DQN(RLAlgorithm):
         observation = self._env.reset()
 
         with sess.as_default():
+            self._update_target()
+
             for ep in range(self._n_epochs):
-                print('EP%d' % ep)
-                random_move = 0
-                policy_move = 0
                 mean_loss = 0
                 trained_iter = 0
-                for ep_iter in range(self._epoch_length):
-                    self._env.render()
-                    action, info = self._es.get_action(observation)
-                    if info == 'random':
-                        random_move += 1
-                    elif info == 'policy':
-                        policy_move += 1
-                    next_observation, reward, terminal, _ = self._env.step(action)
+                epoch_rewards = list()
+                episode_lengths = list()
+                with logger.prefix('Epoch #%d | ' % ep):
+                    for ep_iter in pyprind.prog_bar(range(self._epoch_length)):
+                        self._env.render()
+                        action, _ = self._es.get_action(observation)
+                        next_observation, reward, terminal, _ = self._env.step(action)
 
-                    replay_buffer.add_sample(
-                        observation=observation,
-                        next_observation=next_observation,
-                        action=action,
-                        terminal=terminal,
-                        reward=reward,
-                    )
+                        replay_buffer.add_sample(
+                            observation=observation,
+                            next_observation=next_observation,
+                            action=action,
+                            terminal=terminal,
+                            reward=reward,
+                        )
 
-                    episode_rewards += reward
-                    path_length += 1
+                        episode_rewards += reward
+                        path_length += 1
 
-                    observation = next_observation
+                        observation = next_observation
 
-                    if terminal or path_length >= self._max_path_length:
-                        observation = self._env.reset()
-                        path_length = 0
-                        print('ep_reward: %d'%episode_rewards)
-                        episode_rewards = 0
+                        if terminal or path_length >= self._max_path_length:
+                            observation = self._env.reset()
+                            epoch_rewards.append(episode_rewards)
+                            episode_lengths.append(path_length)
+                            path_length = 0
+                            episode_rewards = 0
 
-                    iter = ep * self._epoch_length + ep_iter
-                    if replay_buffer.size > self._min_pool_size:
-                        batch = replay_buffer.random_batch(self._batch_size)
-                        loss = self._do_training(iter, batch)
-                        mean_loss += loss
-                        trained_iter += 1
+                        iter = ep * self._epoch_length + ep_iter
+                        if replay_buffer.size > self._min_pool_size:
+                            batch = replay_buffer.random_batch(self._batch_size)
+                            loss = self._do_training(iter, batch)
+                            mean_loss += loss
+                            trained_iter += 1
 
-                    if iter % self._target_update_period == 0:
-                        self._update_target()
-
-                print('Random move: %d' % random_move)
-                print('Policy move: %d' % policy_move)
-                print('Mean loss: %f' % (mean_loss/self._epoch_length))
+                        if iter % self._target_update_period == 0 and replay_buffer.size > self._min_pool_size:
+                            self._update_target()
+                    logger.record_tabular('mean-td-error', (mean_loss/self._epoch_length))
+                    logger.record_tabular('mean-episode-reward', np.mean(epoch_rewards))
+                    logger.record_tabular('mean-epsiode-length', np.mean(episode_lengths))
+                    logger.dump_tabular()
 
     def _do_training(self, iter, batch):
         feed_dict = {
@@ -125,11 +127,11 @@ class DQN(RLAlgorithm):
         return td_error
 
     def _build_training_op(self):
-        q_values = self._qf.get_values_op()
+        q_values = self._qf.values_op
         q_pred = tf.reduce_sum(q_values * tf.one_hot(self._action_ph, self._n_actions), axis=1)
 
         with tf.variable_scope('target'):
-            next_q_values = self._qf.values_op(observation_ph=self._next_obs_ph, reuse=False)
+            next_q_values = self._qf.get_values_op(observation_ph=self._next_obs_ph, reuse=False)
 
         masked_next_q = (1.0 - self._terminal_ph) * tf.reduce_max(next_q_values, axis=1)
         q_target = self._reward_ph + self._gamma * masked_next_q
@@ -149,7 +151,7 @@ class DQN(RLAlgorithm):
         ]
 
     def _build_placeholders(self):
-        self._obs_ph = self._qf.get_observations_ph()
+        self._obs_ph = self._qf.observations_ph
         self._next_obs_ph = tf.placeholder(
             tf.float32,
             shape=[None, self._env.observation_space.flat_dim],
@@ -172,5 +174,4 @@ class DQN(RLAlgorithm):
         )
 
     def _update_target(self):
-        print('Target updated')
         tf.get_default_session().run(self._update_target_op)
