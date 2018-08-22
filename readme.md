@@ -1,16 +1,17 @@
-# rllab tensorflow
+# rltoolkits
+This is a repository that is still under development. Currently it relies on a couple primitives from [garage](https://github.com/rlworkgroup/garage).
 
 ## Installation
 
 ### Step 1
-Checkout [rllab](https://github.com/users/ryanjulian/rllab/) and switch to the [integration](https://github.com/ryanjulian/rllab/tree/integration) branch.
+Checkout [garage](https://github.com/rlworkgroup/garage)
 
-Follow the standard rllab [setup instructions](http://rllab.readthedocs.io/en/latest/user/installation.html).
+Follow the standard garage [setup instructions](https://rlgarage.readthedocs.io/en/latest/user/installation.html#express-install).
 
 ### Step 2
 Check out this repository as a submodule of the repository above, into
 `sandbox/zhanpeng`.
 
 ```
-git submodule add -f https://github.com/zhanpenghe/rllab-tf.git sandbox/zhanpeng
+git submodule add -f https://github.com/zhanpenghe/rltookits.git sandbox/zhanpeng
 ```
