@@ -1,17 +1,18 @@
 import numpy as np
 import torch
-import torch.distributions as distributions
 import torch.nn.functional as F
 
 from garage.core import Serializable
 
-from sandbox.zhanpeng.torch.policies import StochasticPolicy
 from sandbox.zhanpeng.torch.core.networks import MLP
+from sandbox.zhanpeng.torch.policies import StochasticPolicy
+
 
 class GaussianMLPPolicy(StochasticPolicy, Serializable):
 
     def __init__(self,
-                 env_spec,
+                 obs_dim,
+                 action_dim,
                  name="GaussianMLPPolicy",
                  hidden_sizes=(32, 32),
                  learn_std=True,
@@ -20,17 +21,17 @@ class GaussianMLPPolicy(StochasticPolicy, Serializable):
                  std_share_network=False,
                  std_hidden_sizes=(32, 32),
                  min_std=1e-6,
-                 std_hidden_nonlinearity=F.nn.tanh,
-                 hidden_nonlinearity=F.nn.tanh,
+                 std_hidden_nonlinearity=F.tanh,
+                 hidden_nonlinearity=F.tanh,
                  output_nonlinearity=None,
                  mean_network=None,
                  std_network=None,
                  std_parametrization='exp'):
 
-        Serializable.quick_init(locals())
+        Serializable.quick_init(self, locals())
 
-        obs_dim = env_spec.observation_space.flat_dim
-        action_dim = env_spec.action_space.flat_dim
+        obs_dim = obs_dim
+        action_dim = action_dim
 
         self._std_share_network = std_share_network
         self._action_dim = action_dim
@@ -43,6 +44,7 @@ class GaussianMLPPolicy(StochasticPolicy, Serializable):
                     init_std_param = np.log(np.exp(init_std) - 1)
                 else:
                     raise NotImplementedError
+                # TODO: if sharing network, only the bias of the std is using init_b
                 mean_network = MLP(
                     input_size=obs_dim,
                     output_size=2*action_dim,
@@ -64,6 +66,7 @@ class GaussianMLPPolicy(StochasticPolicy, Serializable):
         if std_network is None:
             if adaptive_std:
                 if not std_share_network:
+                    # TODO: There should be an init value for std
                     std_network = MLP(
                         input_size=obs_dim,
                         output_size=action_dim,
@@ -88,7 +91,9 @@ class GaussianMLPPolicy(StochasticPolicy, Serializable):
         mean, std = self._get_mean_and_std(observation)
         dist = self._dist(loc=mean, scale=std)
         action = dist.sample()  # TODO: Check sample shape
-        return action
+        log_prob = dist.log_prob(action)
+
+        return action, dict(log_prob=log_prob)
 
     def _get_mean_and_std(self, observation):
         if self._std_share_network:

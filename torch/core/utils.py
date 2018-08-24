@@ -178,7 +178,6 @@ def clip1(x):
     return torch.clamp(x, -1, 1)
 
 
-
 """
 GPU wrappers
 """
