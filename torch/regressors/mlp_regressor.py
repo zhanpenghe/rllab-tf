@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from sandbox.zhanpeng.torch.core.networks import MLP
 
 
-class MLPValueFunction:
+class MLPRegressor:
 
     """
     A value function that output the value of an observation
@@ -34,7 +34,7 @@ class MLPValueFunction:
             self._optimizer = optimizer(self.mlp.parameters(), lr=lr)
             self._loss_function = None
 
-    def values(self, observations):
+    def predict(self, observations):
         values = self.mlp.forward(input=observations)
         return values
 
